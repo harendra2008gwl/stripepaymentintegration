@@ -78,13 +78,18 @@ NS_ASSUME_NONNULL_BEGIN
     self.lastKeyboardFrame = keyboardFrame;
     
     if (self.managedScrollView) {
-        
         UIScrollView *scrollView = self.managedScrollView;
         UIView *scrollViewSuperView = self.managedScrollView.superview;
-        UIView *lastResponder = self.lastResponder;
         
         UIEdgeInsets contentInsets = scrollView.contentInset;
-        UIEdgeInsets scrollIndicatorInsets = scrollView.scrollIndicatorInsets;
+        UIEdgeInsets scrollIndicatorInsets = UIEdgeInsetsZero;
+#if defined(TARGET_OS_MACCATALYST) && (TARGET_OS_MACCATALYST != 0)
+        if (@available(iOS 11.1, *)) {
+            scrollIndicatorInsets = scrollView.verticalScrollIndicatorInsets;
+        }
+#else
+        scrollIndicatorInsets = scrollView.scrollIndicatorInsets;
+#endif
         
         CGRect windowFrame = [scrollViewSuperView convertRect:scrollViewSuperView.frame 
                                                        toView:nil];
@@ -96,28 +101,11 @@ NS_ASSUME_NONNULL_BEGIN
         self.currentBottomInsetChange += bottomInsetDelta;
         scrollView.contentInset = contentInsets;
         scrollView.scrollIndicatorInsets = scrollIndicatorInsets;
-        
-        if (!lastResponder || bottomIntersection.size.height <= 0) {
-            scrollView.contentOffset = CGPointMake(0, -scrollView.contentInset.top);
-        }
-        else {
-            // the keyboard is visible
-            CGRect responderFrame = [lastResponder convertRect:lastResponder.bounds toView:scrollView];
-            CGRect keyboardFrameInScrollViewCoords = [scrollView convertRect:keyboardFrame fromView:nil];
-            CGPoint offset = scrollView.contentOffset;
-            
-            CGFloat topOfScreenOffset = CGRectGetMinY(responderFrame);
-            CGFloat topOfKeyboardOffset = CGRectGetMinY(responderFrame) - CGRectGetMinY(keyboardFrameInScrollViewCoords);
-            offset.y = ((topOfScreenOffset + topOfKeyboardOffset) / 2) - scrollView.contentInset.top;
-            offset.y = MAX(offset.y, -scrollView.contentInset.top);
-            scrollView.contentOffset = offset;
-        }
     }
     
     if (self.keyboardFrameBlock) {
         self.keyboardFrameBlock(keyboardFrame, self.lastResponder);
     }
-    
 }
 
 @end

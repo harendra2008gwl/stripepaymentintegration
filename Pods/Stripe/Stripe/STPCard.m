@@ -45,7 +45,7 @@ NS_ASSUME_NONNULL_BEGIN
     NSString *brand = [string lowercaseString];
     if ([brand isEqualToString:@"visa"]) {
         return STPCardBrandVisa;
-    } else if ([brand isEqualToString:@"american express"]) {
+    } else if ([brand isEqualToString:@"american express"] || [brand isEqualToString:@"american_express"]) {
         return STPCardBrandAmex;
     } else if ([brand isEqualToString:@"mastercard"]) {
         return STPCardBrandMasterCard;
@@ -53,7 +53,7 @@ NS_ASSUME_NONNULL_BEGIN
         return STPCardBrandDiscover;
     } else if ([brand isEqualToString:@"jcb"]) {
         return STPCardBrandJCB;
-    } else if ([brand isEqualToString:@"diners club"]) {
+    } else if ([brand isEqualToString:@"diners club"] || [brand isEqualToString:@"diners_club"]) {
         return STPCardBrandDinersClub;
     } else if ([brand isEqualToString:@"unionpay"]) {
         return STPCardBrandUnionPay;
@@ -63,24 +63,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 + (NSString *)stringFromBrand:(STPCardBrand)brand {
-    switch (brand) {
-        case STPCardBrandAmex:
-            return @"American Express";
-        case STPCardBrandDinersClub:
-            return @"Diners Club";
-        case STPCardBrandDiscover:
-            return @"Discover";
-        case STPCardBrandJCB:
-            return @"JCB";
-        case STPCardBrandMasterCard:
-            return @"MasterCard";
-        case STPCardBrandUnionPay:
-            return @"UnionPay";
-        case STPCardBrandVisa:
-            return @"Visa";
-        case STPCardBrandUnknown:
-            return @"Unknown";
-    }
+    return STPStringFromCardBrand(brand);
 }
 
 #pragma mark - STPCardFundingType
@@ -224,7 +207,7 @@ NS_ASSUME_NONNULL_BEGIN
     return card;
 }
 
-#pragma mark - STPPaymentMethod
+#pragma mark - STPPaymentOption
 
 - (UIImage *)image {
     return [STPImageLibrary brandImageForCardBrand:self.brand];
@@ -286,6 +269,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (nullable NSString *)addressCountry {
     return self.address.country;
+}
+
+- (BOOL)isReusable {
+    return YES;
 }
 
 @end

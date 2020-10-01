@@ -12,7 +12,10 @@
 #import "STPAddressFieldTableViewCell.h"
 #import "STPAddressViewModel.h"
 #import "STPAnalyticsClient.h"
-#import "STPCardIOProxy.h"
+#import "STPCameraView.h"
+#import "STPCardScanner.h"
+#import "STPCardScannerTableViewCell.h"
+#import "STPCardValidator.h"
 #import "STPColorUtils.h"
 #import "STPCoreTableViewController+Private.h"
 #import "STPDispatchFunctions.h"
@@ -27,9 +30,6 @@
 #import "STPPaymentCardTextFieldCell.h"
 #import "STPPromise.h"
 #import "STPSectionHeaderView.h"
-#import "STPSourceParams.h"
-#import "STPToken.h"
-#import "STPWeakStrongMacros.h"
 #import "StripeError.h"
 #import "UIBarButtonItem+Stripe.h"
 #import "UINavigationBar+Stripe_Theme.h"
@@ -43,19 +43,21 @@
 
 @interface STPAddCardViewController ()<
     STPAddressViewModelDelegate,
-    STPCardIOProxyDelegate,
+    STPCardScannerDelegate,
     STPPaymentCardTextFieldDelegate,
     UITableViewDelegate,
     UITableViewDataSource>
 
+@property (nonatomic) BOOL alwaysEnableDoneButton;
 @property (nonatomic) STPPaymentConfiguration *configuration;
 @property (nonatomic) STPAddress *shippingAddress;
 @property (nonatomic) BOOL hasUsedShippingAddress;
-@property (nonatomic) STPAPIClient *apiClient;
 @property (nonatomic, weak) UIImageView *cardImageView;
 @property (nonatomic) UIBarButtonItem *doneItem;
 @property (nonatomic) STPSectionHeaderView *cardHeaderView;
-@property (nonatomic) STPCardIOProxy *cardIOProxy;
+@property (nonatomic) STPCardScanner *cardScanner API_AVAILABLE(ios(13.0));
+@property (nonatomic) STPCardScannerTableViewCell *scannerCell;
+@property (nonatomic) BOOL isScanning;
 @property (nonatomic) STPSectionHeaderView *addressHeaderView;
 @property (nonatomic) STPPaymentCardTextFieldCell *paymentCell;
 @property (nonatomic) BOOL loading;
@@ -64,16 +66,24 @@
 @property (nonatomic) STPAddressViewModel *addressViewModel;
 @property (nonatomic) UIToolbar *inputAccessoryToolbar;
 @property (nonatomic) BOOL lookupSucceeded;
+
+@property (nonatomic) NSTimer *scannerCompleteAnimationTimer;
+
 @end
 
 static NSString *const STPPaymentCardCellReuseIdentifier = @"STPPaymentCardCellReuseIdentifier";
 
 typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     STPPaymentCardNumberSection = 0,
-    STPPaymentCardBillingAddressSection = 1,
+    STPPaymentCardScannerSection = 1,
+    STPPaymentCardBillingAddressSection = 2,
 };
 
 @implementation STPAddCardViewController
+
++ (void)initialize{
+    [[STPAnalyticsClient sharedClient] addClassToProductUsageIfNecessary:[self class]];
+}
 
 - (instancetype)init {
     return [self initWithConfiguration:[STPPaymentConfiguration sharedConfiguration] theme:[STPTheme defaultTheme]];
@@ -91,11 +101,15 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     _configuration = configuration;
     _shippingAddress = nil;
     _hasUsedShippingAddress = NO;
-    _apiClient = [[STPAPIClient alloc] initWithConfiguration:configuration];
-    _addressViewModel = [[STPAddressViewModel alloc] initWithRequiredBillingFields:configuration.requiredBillingAddressFields];
+    _apiClient = [STPAPIClient sharedClient];
+    _addressViewModel = [[STPAddressViewModel alloc] initWithRequiredBillingFields:configuration.requiredBillingAddressFields availableCountries:configuration._availableCountries];
     _addressViewModel.delegate = self;
-
     self.title = STPLocalizedString(@"Add a Card", @"Title for Add a Card view");
+}
+
+- (CGFloat)tableView:(UITableView *)tableView estimatedHeightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    return 44.0;
 }
 
 - (void)createAndSetupViews {
@@ -104,7 +118,10 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     UIBarButtonItem *doneItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(nextPressed:)];
     self.doneItem = doneItem;
     self.stp_navigationItemProxy.rightBarButtonItem = doneItem;
-    self.stp_navigationItemProxy.rightBarButtonItem.enabled = NO;
+    [self updateDoneButton];
+
+    self.stp_navigationItemProxy.leftBarButtonItem.accessibilityIdentifier = @"AddCardViewControllerNavBarCancelButtonIdentifier";
+    self.stp_navigationItemProxy.rightBarButtonItem.accessibilityIdentifier = @"AddCardViewControllerNavBarDoneButtonIdentifier";
     
     UIImageView *cardImageView = [[UIImageView alloc] initWithImage:[STPImageLibrary largeCardFrontImage]];
     cardImageView.contentMode = UIViewContentModeCenter;
@@ -114,11 +131,12 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
 
     STPPaymentCardTextFieldCell *paymentCell = [[STPPaymentCardTextFieldCell alloc] init];
     paymentCell.paymentField.delegate = self;
-    self.paymentCell = paymentCell;
-
-    if (self.prefilledInformation.billingAddress != nil) {
-        self.addressViewModel.address = self.prefilledInformation.billingAddress;
+    if (self.configuration.requiredBillingAddressFields == STPBillingAddressFieldsPostalCode) {
+        // If postal code collection is enabled, move the postal code field into the card entry field.
+        // Otherwise, this will be picked up by the billing address fields below.
+        paymentCell.paymentField.postalCodeEntryEnabled = YES;
     }
+    self.paymentCell = paymentCell;
     
     self.activityIndicator = [[STPPaymentActivityIndicatorView alloc] initWithFrame:CGRectMake(0, 0, 20.0f, 20.0f)];
     
@@ -127,6 +145,10 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     [self updateInputAccessoryVisiblity];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
+    [self.tableView reloadData];
+    if (self.prefilledInformation.billingAddress != nil) {
+        self.addressViewModel.address = self.prefilledInformation.billingAddress;
+    }
 
     STPSectionHeaderView *addressHeaderView = [STPSectionHeaderView new];
     addressHeaderView.theme = self.theme;
@@ -176,22 +198,57 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
 }
 
 - (void)setUpCardScanningIfAvailable {
-    if ([STPCardIOProxy isCardIOAvailable]) {
-        self.cardIOProxy = [[STPCardIOProxy alloc] initWithDelegate:self];
+    if (@available(iOS 13.0, *)) {
+        if (![STPCardScanner cardScanningAvailable] || !self.configuration.cardScanningEnabled) {
+            return;
+        }
+        STPCardScannerTableViewCell *scannerCell = [[STPCardScannerTableViewCell alloc] init];
+        _scannerCell = scannerCell;
+        
+        STPCardScanner *cardScanner = [[STPCardScanner alloc] initWithDelegate:self];
+        cardScanner.cameraView = scannerCell.cameraView;
+        _cardScanner = cardScanner;
+        
         self.cardHeaderView.buttonHidden = NO;
         [self.cardHeaderView.button setTitle:STPLocalizedString(@"Scan Card", @"Text for button to scan a credit card") forState:UIControlStateNormal];
-        [self.cardHeaderView.button addTarget:self action:@selector(presentCardIO) forControlEvents:UIControlEventTouchUpInside];
+        [self.cardHeaderView.button addTarget:self action:@selector(scanCard) forControlEvents:UIControlEventTouchUpInside];
         [self.cardHeaderView setNeedsLayout];
     }
 }
 
-- (void)presentCardIO {
-    [self.cardIOProxy presentCardIOFromViewController:self];
+- (void)setAlwaysEnableDoneButton:(BOOL)alwaysEnableDoneButton {
+    if (alwaysEnableDoneButton != _alwaysEnableDoneButton) {
+        _alwaysEnableDoneButton = alwaysEnableDoneButton;
+        [self updateDoneButton];
+    }
 }
 
-- (void)cardIOProxy:(__unused STPCardIOProxy *)proxy didFinishWithCardParams:(STPCardParams *)cardParams {
-    if (cardParams) {
-        self.paymentCell.paymentField.cardParams = cardParams;
+- (void)setIsScanning:(BOOL)isScanning {
+    if (_isScanning == isScanning) {
+        return;
+    }
+    _isScanning = isScanning;
+    
+    self.cardHeaderView.button.enabled = !isScanning;
+    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:0 inSection:STPPaymentCardScannerSection];
+    [self.tableView beginUpdates];
+    if (isScanning) {
+        [self.tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    } else {
+        [self.tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    }
+    [self.tableView endUpdates];
+    if (isScanning) {
+        [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionMiddle animated:YES];
+    }
+    [self updateInputAccessoryVisiblity];
+}
+
+- (void)scanCard {
+    if (@available(iOS 13.0, *)) {
+        [self.view endEditing:YES];
+        self.isScanning = YES;
+        [self.cardScanner start];
     }
 }
 
@@ -212,7 +269,8 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     self.activityIndicator.tintColor = self.theme.accentColor;
     
     self.paymentCell.theme = self.theme;
-    
+    self.cardHeaderView.theme = self.theme;
+    self.addressHeaderView.theme = self.theme;
     for (STPAddressFieldTableViewCell *cell in self.addressViewModel.addressCells) {
         cell.theme = self.theme;
     }
@@ -231,8 +289,10 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
         [self.tableView endEditing:YES];
         UIBarButtonItem *loadingItem = [[UIBarButtonItem alloc] initWithCustomView:self.activityIndicator];
         [self.stp_navigationItemProxy setRightBarButtonItem:loadingItem animated:YES];
+        self.cardHeaderView.buttonHidden = YES;
     } else {
         [self.stp_navigationItemProxy setRightBarButtonItem:self.doneItem animated:YES];
+        self.cardHeaderView.buttonHidden = NO;
     }
     NSArray *cells = self.addressViewModel.addressCells;
     for (UITableViewCell *cell in [cells arrayByAddingObject:self.paymentCell]) {
@@ -255,6 +315,7 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     if (self.paymentCell.isEmpty) {
         return self.paymentCell;
     }
+    
     for (STPAddressFieldTableViewCell *cell in self.addressViewModel.addressCells) {
         if (cell.contents.length == 0) {
             return cell;
@@ -269,65 +330,45 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
 
 - (void)nextPressed:(__unused id)sender {
     self.loading = YES;
-    STPCardParams *cardParams = self.paymentCell.paymentField.cardParams;
-    cardParams.address = self.addressViewModel.address;
-    cardParams.currency = self.managedAccountCurrency;
-    if (cardParams) {
-        // Create and return a card source
-        if (self.configuration.createCardSources) {
-            STPSourceParams *sourceParams = [STPSourceParams cardParamsWithCard:cardParams];
-            [self.apiClient createSourceWithParams:sourceParams completion:^(STPSource * _Nullable source, NSError * _Nullable tokenizationError) {
-                if (tokenizationError) {
-                    [self handleCardTokenizationError:tokenizationError];
-                }
-                else {
-                    if ([self.delegate respondsToSelector:@selector(addCardViewController:didCreateSource:completion:)]) {
-                        [self.delegate addCardViewController:self didCreateSource:source completion:^(NSError * _Nullable error) {
-                            stpDispatchToMainThreadIfNecessary(^{
-                                if (error) {
-                                    [self handleCardTokenizationError:error];
-                                }
-                                else {
-                                    self.loading = NO;
-                                }
-                            });
-                        }];
-                    }
-                    else {
-                        self.loading = NO;
-                    }
-                }
-            }];
-        }
-        // Create and return a card token
-        else {
-            [self.apiClient createTokenWithCard:cardParams completion:^(STPToken *token, NSError *tokenizationError) {
-                if (tokenizationError) {
-                    [self handleCardTokenizationError:tokenizationError];
-                }
-                else {
-                    if ([self.delegate respondsToSelector:@selector(addCardViewController:didCreateToken:completion:)]) {
-                        [self.delegate addCardViewController:self didCreateToken:token completion:^(NSError * _Nullable error) {
-                            stpDispatchToMainThreadIfNecessary(^{
-                                if (error) {
-                                    [self handleCardTokenizationError:error];
-                                }
-                                else {
-                                    self.loading = NO;
-                                }
-                            });
-                        }];
-                    }
-                    else {
-                        self.loading = NO;
-                    }
-                }
-            }];
-        }
+    STPPaymentMethodCardParams *cardParams = self.paymentCell.paymentField.cardParams;
+    if (!cardParams) {
+        return;
     }
+    // Create and return a Payment Method
+    STPPaymentMethodBillingDetails *billingDetails = [[STPPaymentMethodBillingDetails alloc] init];
+    if (self.configuration.requiredBillingAddressFields == STPBillingAddressFieldsPostalCode) {
+        STPAddress *address = [[STPAddress alloc] init];
+        address.postalCode = self.paymentCell.paymentField.postalCode;
+        billingDetails.address = [[STPPaymentMethodAddress alloc] initWithAddress:address];
+    } else {
+        billingDetails.address = [[STPPaymentMethodAddress alloc] initWithAddress:self.addressViewModel.address];
+        billingDetails.email = self.addressViewModel.address.email;
+        billingDetails.name = self.addressViewModel.address.name;
+        billingDetails.phone = self.addressViewModel.address.phone;
+    }
+    STPPaymentMethodParams *paymentMethodParams = [STPPaymentMethodParams paramsWithCard:cardParams
+                                                                          billingDetails:billingDetails
+                                                                                metadata:@{@"test_key": @"test_value"}];
+    [self.apiClient createPaymentMethodWithParams:paymentMethodParams completion:^(STPPaymentMethod * _Nullable paymentMethod, NSError * _Nullable createPaymentMethodError) {
+        if (createPaymentMethodError) {
+            [self handleError:createPaymentMethodError];
+        } else {
+            if ([self.delegate respondsToSelector:@selector(addCardViewController:didCreatePaymentMethod:completion:)]) {
+                [self.delegate addCardViewController:self didCreatePaymentMethod:paymentMethod completion:^(NSError * _Nullable attachToCustomerError) {
+                    stpDispatchToMainThreadIfNecessary(^{
+                        if (attachToCustomerError) {
+                            [self handleError:attachToCustomerError];
+                        } else {
+                            self.loading = NO;
+                        }
+                    });
+                }];
+            }
+        }
+    }];
 }
 
-- (void)handleCardTokenizationError:(NSError *)error {
+- (void)handleError:(NSError *)error {
     self.loading = NO;
     [[self firstEmptyField] becomeFirstResponder];
     
@@ -345,7 +386,7 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
 - (void)updateDoneButton {
     self.stp_navigationItemProxy.rightBarButtonItem.enabled = (self.paymentCell.paymentField.isValid
                                                                && self.addressViewModel.isValid
-                                                               );
+                                                               ) || self.alwaysEnableDoneButton;
 }
 
 - (void)updateInputAccessoryVisiblity {
@@ -377,22 +418,47 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     [[self.addressViewModel.addressCells stp_boundSafeObjectAtIndex:0] becomeFirstResponder];
 }
 
-- (void)paymentCardTextFieldDidBeginEditingCVC:(__unused STPPaymentCardTextField *)textField {
+- (void)paymentCardTextFieldWillEndEditingForReturn:(__unused STPPaymentCardTextField *)textField {
+    [self paymentFieldNextTapped];
+}
+
+- (void)paymentCardTextFieldDidBeginEditingCVC:(STPPaymentCardTextField *)textField {
+    BOOL isAmex = [STPCardValidator brandForNumber:textField.cardNumber] == STPCardBrandAmex;
+    UIImage *newImage;
+    UIViewAnimationOptions animationTransition;
+
+    if (isAmex) {
+        newImage = [STPImageLibrary largeCardAmexCVCImage];
+        animationTransition = UIViewAnimationOptionTransitionCrossDissolve;
+    } else {
+        newImage = [STPImageLibrary largeCardBackImage];
+        animationTransition = UIViewAnimationOptionTransitionFlipFromRight;
+    }
+
     [UIView transitionWithView:self.cardImageView
                       duration:0.2
-                       options:UIViewAnimationOptionTransitionFlipFromRight
+                       options:animationTransition
                     animations:^{
-                        self.cardImageView.image = [STPImageLibrary largeCardBackImage];
+                        self.cardImageView.image = newImage;
                     } completion:nil];
 }
 
-- (void)paymentCardTextFieldDidEndEditingCVC:(__unused STPPaymentCardTextField *)textField {
+- (void)paymentCardTextFieldDidEndEditingCVC:(STPPaymentCardTextField *)textField {
+    BOOL isAmex = [STPCardValidator brandForNumber:textField.cardNumber] == STPCardBrandAmex;
+    UIViewAnimationOptions animationTransition = isAmex ? UIViewAnimationOptionTransitionCrossDissolve : UIViewAnimationOptionTransitionFlipFromLeft;
+
     [UIView transitionWithView:self.cardImageView
                       duration:0.2
-                       options:UIViewAnimationOptionTransitionFlipFromLeft
+                       options:animationTransition
                     animations:^{
                         self.cardImageView.image = [STPImageLibrary largeCardFrontImage];
                     } completion:nil];
+}
+
+- (void)paymentCardTextFieldDidBeginEditing:(nonnull STPPaymentCardTextField *)textField {
+    if (@available(iOS 13.0, *)) {
+        [[self cardScanner] stop];
+    }
 }
 
 #pragma mark - STPAddressViewModelDelegate
@@ -413,17 +479,26 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     [self updateDoneButton];
 }
 
+- (void)addressViewModelWillUpdate:(__unused STPAddressViewModel *)addressViewModel {
+    [self.tableView beginUpdates];
+}
+
+- (void)addressViewModelDidUpdate:(__unused STPAddressViewModel *)addressViewModel {
+    [self.tableView endUpdates];
+}
+
 #pragma mark - UITableView
 
 - (NSInteger)numberOfSectionsInTableView:(__unused UITableView *)tableView {
-    return 2;
+    return 3;
 }
 
 - (NSInteger)tableView:(__unused UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == STPPaymentCardNumberSection) {
         return 1;
-    }
-    else if (section == STPPaymentCardBillingAddressSection) {
+    } else if (section == STPPaymentCardScannerSection) {
+        return _isScanning ? 1 : 0;
+    } else if (section == STPPaymentCardBillingAddressSection) {
         return self.addressViewModel.addressCells.count;
     }
     return 0;
@@ -435,6 +510,9 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     switch (indexPath.section) {
         case STPPaymentCardNumberSection:
             cell = self.paymentCell;
+            break;
+        case STPPaymentCardScannerSection:
+            cell = self.scannerCell;
             break;
         case STPPaymentCardBillingAddressSection:
             cell = [self.addressViewModel.addressCells stp_boundSafeObjectAtIndex:indexPath.row];
@@ -471,6 +549,8 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
         return [self.cardHeaderView sizeThatFits:fittingSize].height;
     } else if (section == STPPaymentCardBillingAddressSection && numberOfRows != 0) {
         return [self.addressHeaderView sizeThatFits:fittingSize].height;
+    } else if (section == STPPaymentCardScannerSection) {
+        return 0.01f;
     } else if (numberOfRows != 0) {
         return tableView.sectionHeaderHeight;
     }
@@ -504,5 +584,60 @@ typedef NS_ENUM(NSUInteger, STPPaymentCardSection) {
     }];
     [self.tableView endUpdates];
 }
+
+#pragma mark - STPCardScanner
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    if (@available(iOS 13.0, *)) {
+        UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
+        if (UIDeviceOrientationIsPortrait(orientation) || UIDeviceOrientationIsLandscape(orientation)) {
+            _cardScanner.deviceOrientation = orientation;
+        }
+        if (_isScanning) {
+            NSIndexPath *indexPath = [NSIndexPath indexPathForRow:0 inSection:STPPaymentCardScannerSection];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionMiddle animated:YES];
+            });
+        }
+    }
+}
+
+- (void)cardScanner:(__unused STPCardScanner *)scanner didFinishWithCardParams:(nullable STPPaymentMethodCardParams *)cardParams error:(nullable NSError *)error API_AVAILABLE(ios(13)){
+    if (error) {
+        [self handleError:error];
+    }
+    
+    static NSTimeInterval const kSTPCardScanAnimationTime = 0.04;
+    if (cardParams) {
+        self.view.userInteractionEnabled = NO;
+        self.paymentCell.paymentField.inputView = [[UIView alloc] init];
+        __block NSUInteger i = 0;
+        self.scannerCompleteAnimationTimer = [NSTimer scheduledTimerWithTimeInterval:kSTPCardScanAnimationTime repeats:YES block:^(NSTimer * _Nonnull timer) {
+            i++;
+            STPPaymentMethodCardParams *newParams = [[STPPaymentMethodCardParams alloc] init];
+            if (i < [cardParams.number length]) {
+                newParams.number = [cardParams.number substringToIndex:i];
+            } else {
+                newParams.number = cardParams.number;
+            }
+            self.paymentCell.paymentField.cardParams = newParams;
+            if (i > [cardParams.number length]) {
+                self.paymentCell.paymentField.cardParams = cardParams;
+                self.isScanning = NO;
+                self.paymentCell.paymentField.inputView = nil;
+                // Force the inputView to reload by asking the text field to resign/become first responder:
+                [self.paymentCell.paymentField resignFirstResponder];
+                [self.paymentCell.paymentField becomeFirstResponder];
+                [timer invalidate];
+                self.view.userInteractionEnabled = YES;
+            }
+        }];
+    } else {
+        self.isScanning = NO;
+    }
+}
+
 
 @end
