@@ -13,6 +13,8 @@
 #import "STPCardValidator.h"
 #import "STPPostalCodeValidator.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef NS_ENUM(NSInteger, STPCardFieldType) {
     STPCardFieldTypeNumber,
     STPCardFieldTypeExpiration,
@@ -22,19 +24,29 @@ typedef NS_ENUM(NSInteger, STPCardFieldType) {
 
 @interface STPPaymentCardTextFieldViewModel : NSObject
 
-@property (nonatomic, readwrite, copy, nullable) NSString *cardNumber;
-@property (nonatomic, readwrite, copy, nullable) NSString *rawExpiration;
+@property (nonatomic, copy, nullable) NSString *cardNumber;
+@property (nonatomic, copy, nullable) NSString *rawExpiration;
 @property (nonatomic, readonly, nullable) NSString *expirationMonth;
 @property (nonatomic, readonly, nullable) NSString *expirationYear;
-@property (nonatomic, readwrite, copy, nullable) NSString *cvc;
-@property (nonatomic, readwrite, assign) BOOL postalCodeRequired;
-@property (nonatomic, readwrite, copy, nullable) NSString *postalCode;
-@property (nonatomic, readwrite, copy, nullable) NSString *postalCodeCountryCode;
+@property (nonatomic, copy, nullable) NSString *cvc;
+@property (nonatomic) BOOL postalCodeRequested;
+@property (nonatomic, readonly) BOOL postalCodeRequired;
+@property (nonatomic, copy, nullable) NSString *postalCode;
+@property (nonatomic, copy, nullable) NSString *postalCodeCountryCode;
 @property (nonatomic, readonly) STPCardBrand brand;
 @property (nonatomic, readonly) BOOL isValid;
+@property (nonatomic, readonly) BOOL hasCompleteMetadataForCardNumber;
+@property (nonatomic, readonly) BOOL isNumberMaxLength;
 
-- (nonnull NSString *)defaultPlaceholder;
+- (NSString *)defaultPlaceholder;
+- (nullable NSString *)compressedCardNumberWithPlaceholder:(nullable NSString *)placeholder;
 
-- (STPCardValidationState)validationStateForField:(STPCardFieldType)fieldType;
+- (STPCardValidationState)validationStateForExpiration;
+- (STPCardValidationState)validationStateForCVC;
+- (STPCardValidationState)validationStateForPostalCode;
+
+- (void)validationStateForCardNumberWithHandler:(void (^)(STPCardValidationState))handler;
 
 @end
+
+NS_ASSUME_NONNULL_END

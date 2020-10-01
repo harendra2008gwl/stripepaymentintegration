@@ -7,14 +7,27 @@
 //
 
 #import "STPCardValidator.h"
+#import "STPCardValidator+Private.h"
 
+#import "STPAnalyticsClient.h"
 #import "STPBINRange.h"
+#import "STPPaymentConfiguration.h"
 #import "NSCharacterSet+Stripe.h"
 
 @implementation STPCardValidator
 
 + (NSString *)sanitizedNumericStringForString:(NSString *)string {
     return stringByRemovingCharactersFromSet(string, [NSCharacterSet stp_invertedAsciiDigitCharacterSet]);
+}
+
++ (NSString *)sanitizedPostalStringForString:(NSString *)string {
+    NSString *sanitizedString = stringByRemovingCharactersFromSet(string, [NSCharacterSet stp_invertedPostalCodeCharacterSet]);
+    NSString *sanitizedStringWithoutPunctuation = stringByRemovingCharactersFromSet(sanitizedString, [NSCharacterSet characterSetWithCharactersInString:@" -"]);
+    if ([sanitizedStringWithoutPunctuation isEqualToString:@""]) {
+        // No postal codes begin with a space or -. If the user has only entered these characters, it was probably a typo.
+        return @"";
+    }
+    return sanitizedString;
 }
 
 + (NSString *)stringByRemovingSpacesFromString:(NSString *)string {
@@ -123,11 +136,9 @@ static NSString * _Nonnull stringByRemovingCharactersFromSet(NSString * _Nonnull
     NSUInteger maxLength = [self maxCVCLengthForCardBrand:brand];
     if (sanitizedCvc.length < minLength) {
         return STPCardValidationStateIncomplete;
-    }
-    else if (sanitizedCvc.length > maxLength) {
+    } else if (sanitizedCvc.length > maxLength) {
         return STPCardValidationStateInvalid;
-    }
-    else {
+    } else {
         return STPCardValidationStateValid;
     }
 }
@@ -148,7 +159,16 @@ static NSString * _Nonnull stringByRemovingCharactersFromSet(NSString * _Nonnull
     }
     if (sanitizedNumber.length == binRange.length) {
         BOOL isValidLuhn = [self stringIsValidLuhn:sanitizedNumber];
-        return isValidLuhn ? STPCardValidationStateValid : STPCardValidationStateInvalid;
+        if (isValidLuhn) {
+            if (!binRange.isCardMetadata && [STPBINRange hasBINRangesForPrefix:sanitizedNumber]) {
+                // log that we didn't get a match in the metadata response so fell back to a hard coded response
+                [[STPAnalyticsClient sharedClient] logCardMetadataMissingRangeWithConfiguration:[STPPaymentConfiguration sharedConfiguration]];
+            }
+            return STPCardValidationStateValid;
+        } else {
+            return STPCardValidationStateInvalid;
+        }
+        
     } else if (sanitizedNumber.length > binRange.length) {
         return STPCardValidationStateInvalid;
     } else {
@@ -177,8 +197,7 @@ static NSString * _Nonnull stringByRemovingCharactersFromSet(NSString * _Nonnull
         STPCardValidationState state = [boxedState integerValue];
         if (state == STPCardValidationStateInvalid) {
             return state;
-        }
-        else if (state == STPCardValidationStateIncomplete) {
+        } else if (state == STPCardValidationStateIncomplete) {
             incomplete = YES;
         }
     }
@@ -241,33 +260,7 @@ static NSString * _Nonnull stringByRemovingCharactersFromSet(NSString * _Nonnull
 }
 
 + (NSInteger)fragmentLengthForCardBrand:(STPCardBrand)brand {
-    switch (brand) {
-        case STPCardBrandAmex:
-            return 5;
-        case STPCardBrandDinersClub:
-            return 2;
-        default:
-            return 4;
-    }
-}
-
-+ (BOOL)stringIsValidLuhn:(NSString *)number {
-    BOOL odd = true;
-    int sum = 0;
-    NSMutableArray *digits = [NSMutableArray arrayWithCapacity:number.length];
-    
-    for (int i = 0; i < (NSInteger)number.length; i++) {
-        [digits addObject:[number substringWithRange:NSMakeRange(i, 1)]];
-    }
-    
-    for (NSString *digitStr in [digits reverseObjectEnumerator]) {
-        int digit = [digitStr intValue];
-        if ((odd = !odd)) digit *= 2;
-        if (digit > 9) digit -= 9;
-        sum += digit;
-    }
-    
-    return sum % 10 == 0;
+    return [[[self cardNumberFormatForBrand:brand] lastObject] unsignedIntegerValue];
 }
 
 + (NSInteger)currentYear {

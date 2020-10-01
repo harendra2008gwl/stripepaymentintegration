@@ -9,15 +9,56 @@
 #import "STPPaymentCardTextFieldViewModel.h"
 
 #import "NSString+Stripe.h"
+#import "STPBINRange.h"
+#import "STPCardValidator+Private.h"
 #import "STPPostalCodeValidator.h"
+
+@interface STPPaymentCardTextFieldViewModel ()
+
+@property (nonatomic, readwrite) BOOL hasCompleteMetadataForCardNumber;
+
+@end
 
 @implementation STPPaymentCardTextFieldViewModel
 
 - (void)setCardNumber:(NSString *)cardNumber {
     NSString *sanitizedNumber = [STPCardValidator sanitizedNumericStringForString:cardNumber];
-    STPCardBrand brand = [STPCardValidator brandForNumber:sanitizedNumber];
-    NSInteger maxLength = [STPCardValidator maxLengthForCardBrand:brand];
-    _cardNumber = [sanitizedNumber stp_safeSubstringToIndex:maxLength];
+    self.hasCompleteMetadataForCardNumber = [STPBINRange hasBINRangesForPrefix:sanitizedNumber];
+    if (self.hasCompleteMetadataForCardNumber) {
+        STPCardBrand brand = [STPCardValidator brandForNumber:sanitizedNumber];
+        NSInteger maxLength = [STPCardValidator maxLengthForCardBrand:brand];
+        _cardNumber = [sanitizedNumber stp_safeSubstringToIndex:maxLength];
+    } else {
+        _cardNumber = [sanitizedNumber stp_safeSubstringToIndex:[STPBINRange maxCardNumberLength]];
+    }
+}
+
+- (nullable NSString *)compressedCardNumberWithPlaceholder:(nullable NSString *)placeholder {
+    NSString *cardNumber = self.cardNumber;
+    if (cardNumber.length == 0) {
+        cardNumber = placeholder ?: self.defaultPlaceholder;
+    }
+
+    // use the card number format
+    NSArray<NSNumber *> *cardNumberFormat = [STPCardValidator cardNumberFormatForCardNumber:cardNumber];
+    
+    NSUInteger index = 0;
+    for (NSNumber *segment in cardNumberFormat) {
+        NSUInteger segmentLength = [segment unsignedIntegerValue];
+        if (index + segmentLength >= cardNumber.length) {
+            return [cardNumber stp_safeSubstringFromIndex:index];
+        }
+        index += segmentLength;
+    }
+    
+    NSUInteger length = [[cardNumberFormat lastObject] unsignedIntegerValue];
+    index = cardNumber.length - length;
+    
+    if (index < cardNumber.length) {
+        return [cardNumber stp_safeSubstringFromIndex:index];
+    }
+
+    return nil;
 }
 
 // This might contain slashes.
@@ -59,51 +100,66 @@
 - (void)setPostalCode:(NSString *)postalCode {
     _postalCode = [STPPostalCodeValidator formattedSanitizedPostalCodeFromString:postalCode
                                                                      countryCode:self.postalCodeCountryCode
-                                                                           usage:STPPostalCodeIntendedUsageBillingAddress];
+                                                                           usage:STPPostalCodeIntendedUsageCardField];
 }
 
 - (void)setPostalCodeCountryCode:(NSString *)postalCodeCountryCode {
     _postalCodeCountryCode = postalCodeCountryCode;
     _postalCode = [STPPostalCodeValidator formattedSanitizedPostalCodeFromString:self.postalCode
                                                                      countryCode:postalCodeCountryCode
-                                                                           usage:STPPostalCodeIntendedUsageBillingAddress];
+                                                                           usage:STPPostalCodeIntendedUsageCardField];
 }
 
 - (STPCardBrand)brand {
     return [STPCardValidator brandForNumber:self.cardNumber];
 }
 
-- (STPCardValidationState)validationStateForField:(STPCardFieldType)fieldType {
-    switch (fieldType) {
-        case STPCardFieldTypeNumber:
-            return [STPCardValidator validationStateForNumber:self.cardNumber validatingCardBrand:YES];
-            break;
-        case STPCardFieldTypeExpiration: {
-            STPCardValidationState monthState = [STPCardValidator validationStateForExpirationMonth:self.expirationMonth];
-            STPCardValidationState yearState = [STPCardValidator validationStateForExpirationYear:self.expirationYear inMonth:self.expirationMonth];
-            if (monthState == STPCardValidationStateValid && yearState == STPCardValidationStateValid) {
-                return STPCardValidationStateValid;
-            } else if (monthState == STPCardValidationStateInvalid || yearState == STPCardValidationStateInvalid) {
-                return STPCardValidationStateInvalid;
-            } else {
-                return STPCardValidationStateIncomplete;
-            }
-            break;
-        }
-        case STPCardFieldTypeCVC:
-            return [STPCardValidator validationStateForCVC:self.cvc cardBrand:self.brand];
-        case STPCardFieldTypePostalCode:
-            return [STPPostalCodeValidator validationStateForPostalCode:self.postalCode
-                                                            countryCode:self.postalCodeCountryCode];
+- (STPCardValidationState)validationStateForCVC {
+    return [STPCardValidator validationStateForCVC:self.cvc cardBrand:self.brand];
+}
+
+- (STPCardValidationState)validationStateForExpiration {
+    STPCardValidationState monthState = [STPCardValidator validationStateForExpirationMonth:self.expirationMonth];
+               STPCardValidationState yearState = [STPCardValidator validationStateForExpirationYear:self.expirationYear inMonth:self.expirationMonth];
+               if (monthState == STPCardValidationStateValid && yearState == STPCardValidationStateValid) {
+                   return STPCardValidationStateValid;
+               } else if (monthState == STPCardValidationStateInvalid || yearState == STPCardValidationStateInvalid) {
+                   return STPCardValidationStateInvalid;
+               } else {
+                   return STPCardValidationStateIncomplete;
+               }
+}
+
+- (BOOL)isNumberMaxLength {
+    return self.cardNumber.length == [STPBINRange maxCardNumberLength];
+}
+
+- (STPCardValidationState)validationStateForPostalCode {
+    if (self.postalCode.length > 0) {
+        return STPCardValidationStateValid;
+    } else {
+        return STPCardValidationStateIncomplete;
     }
 }
 
+- (void)validationStateForCardNumberWithHandler:(void (^)(STPCardValidationState))handler {
+    [STPBINRange retrieveBINRangesForPrefix:self.cardNumber completion:^(__unused NSArray<STPBINRange *> * _Nullable ranges, __unused NSError * _Nullable error) {
+        self.hasCompleteMetadataForCardNumber = [STPBINRange hasBINRangesForPrefix:self.cardNumber];
+        handler([STPCardValidator validationStateForNumber:self.cardNumber validatingCardBrand:YES]);
+    }];
+}
+
 - (BOOL)isValid {
-    return ([self validationStateForField:STPCardFieldTypeNumber] == STPCardValidationStateValid
-            && [self validationStateForField:STPCardFieldTypeExpiration] == STPCardValidationStateValid
-            && [self validationStateForField:STPCardFieldTypeCVC] == STPCardValidationStateValid
+    return ([STPCardValidator validationStateForNumber:self.cardNumber validatingCardBrand:YES] == STPCardValidationStateValid
+            && self.hasCompleteMetadataForCardNumber
+            && [self validationStateForExpiration] == STPCardValidationStateValid
+            && [self validationStateForCVC] == STPCardValidationStateValid
             && (!self.postalCodeRequired
-                || [self validationStateForField:STPCardFieldTypePostalCode] == STPCardValidationStateValid));
+                || [self validationStateForPostalCode] == STPCardValidationStateValid));
+}
+
+- (BOOL)postalCodeRequired {
+    return (self.postalCodeRequested && [STPPostalCodeValidator postalCodeIsRequiredForCountryCode:self.postalCodeCountryCode]);
 }
 
 - (NSString *)defaultPlaceholder {
@@ -118,8 +174,9 @@
                                  NSStringFromSelector(@selector(cvc)),
                                  NSStringFromSelector(@selector(brand)),
                                  NSStringFromSelector(@selector(postalCode)),
-                                 NSStringFromSelector(@selector(postalCodeRequired)),
+                                 NSStringFromSelector(@selector(postalCodeRequested)),
                                  NSStringFromSelector(@selector(postalCodeCountryCode)),
+                                 NSStringFromSelector(@selector(hasCompleteMetadataForCardNumber)),
                                  ]];
 }
 

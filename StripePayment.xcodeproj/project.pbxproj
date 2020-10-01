@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 50;
+	objectVersion = 51;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -15,11 +15,11 @@
 		69D8C17520D529ED00BB8170 /* StandardVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D8C17420D529ED00BB8170 /* StandardVC.swift */; };
 		69D8C17720D52A0A00BB8170 /* CustomVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D8C17620D52A0A00BB8170 /* CustomVC.swift */; };
 		69D8C17920D52A1E00BB8170 /* ApplePayVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D8C17820D52A1E00BB8170 /* ApplePayVC.swift */; };
-		7C62B4FAB22EF692E013AE26 /* Pods_StripePayment.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6369D114587E4306AA1E3D55 /* Pods_StripePayment.framework */; };
+		DC21B05F0201E25C17E32760 /* Pods_StripePayment.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9B6240E1181D851EB6F8160 /* Pods_StripePayment.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		6369D114587E4306AA1E3D55 /* Pods_StripePayment.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StripePayment.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		21C81F5F5017B65E6914B029 /* Pods-StripePayment.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StripePayment.release.xcconfig"; path = "Target Support Files/Pods-StripePayment/Pods-StripePayment.release.xcconfig"; sourceTree = "<group>"; };
 		69D8C15F20D5253C00BB8170 /* StripePayment.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StripePayment.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D8C16220D5253C00BB8170 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		69D8C16420D5253C00BB8170 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -30,8 +30,8 @@
 		69D8C17420D529ED00BB8170 /* StandardVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardVC.swift; sourceTree = "<group>"; };
 		69D8C17620D52A0A00BB8170 /* CustomVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVC.swift; sourceTree = "<group>"; };
 		69D8C17820D52A1E00BB8170 /* ApplePayVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePayVC.swift; sourceTree = "<group>"; };
-		B3F88C535D9B73DFE865EEED /* Pods-StripePayment.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StripePayment.release.xcconfig"; path = "Pods/Target Support Files/Pods-StripePayment/Pods-StripePayment.release.xcconfig"; sourceTree = "<group>"; };
-		FDB752E3CAF5DFF71259803F /* Pods-StripePayment.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StripePayment.debug.xcconfig"; path = "Pods/Target Support Files/Pods-StripePayment/Pods-StripePayment.debug.xcconfig"; sourceTree = "<group>"; };
+		A9B6240E1181D851EB6F8160 /* Pods_StripePayment.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_StripePayment.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF8BAC359526F92867513DC0 /* Pods-StripePayment.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-StripePayment.debug.xcconfig"; path = "Target Support Files/Pods-StripePayment/Pods-StripePayment.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,20 +39,28 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7C62B4FAB22EF692E013AE26 /* Pods_StripePayment.framework in Frameworks */,
+				DC21B05F0201E25C17E32760 /* Pods_StripePayment.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		3787EFFE16F234A7E6924B54 /* Pods */ = {
+		273DCDBA72271DDA1ECB0C3C /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				FDB752E3CAF5DFF71259803F /* Pods-StripePayment.debug.xcconfig */,
-				B3F88C535D9B73DFE865EEED /* Pods-StripePayment.release.xcconfig */,
+				AF8BAC359526F92867513DC0 /* Pods-StripePayment.debug.xcconfig */,
+				21C81F5F5017B65E6914B029 /* Pods-StripePayment.release.xcconfig */,
 			);
-			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		5B08A159C236B1245FB711D8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A9B6240E1181D851EB6F8160 /* Pods_StripePayment.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		69D8C15620D5253B00BB8170 = {
@@ -60,8 +68,8 @@
 			children = (
 				69D8C16120D5253C00BB8170 /* StripePayment */,
 				69D8C16020D5253C00BB8170 /* Products */,
-				3787EFFE16F234A7E6924B54 /* Pods */,
-				A1477FC1D32C57FB3D74CEA2 /* Frameworks */,
+				273DCDBA72271DDA1ECB0C3C /* Pods */,
+				5B08A159C236B1245FB711D8 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -89,14 +97,6 @@
 			path = StripePayment;
 			sourceTree = "<group>";
 		};
-		A1477FC1D32C57FB3D74CEA2 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				6369D114587E4306AA1E3D55 /* Pods_StripePayment.framework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -104,11 +104,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 69D8C17120D5253D00BB8170 /* Build configuration list for PBXNativeTarget "StripePayment" */;
 			buildPhases = (
-				3CD4C037C81427C6F637A134 /* [CP] Check Pods Manifest.lock */,
+				599820290407DE327C874597 /* [CP] Check Pods Manifest.lock */,
 				69D8C15B20D5253B00BB8170 /* Sources */,
 				69D8C15C20D5253B00BB8170 /* Frameworks */,
 				69D8C15D20D5253B00BB8170 /* Resources */,
-				92EC3F537B1A999CCCE873BF /* [CP] Embed Pods Frameworks */,
+				F41053B7083703CCD1999650 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -126,11 +126,12 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 0940;
-				LastUpgradeCheck = 0940;
+				LastUpgradeCheck = 1200;
 				ORGANIZATIONNAME = "Harendra Sharma";
 				TargetAttributes = {
 					69D8C15E20D5253B00BB8170 = {
 						CreatedOnToolsVersion = 9.4;
+						LastSwiftMigration = 1200;
 					};
 				};
 			};
@@ -166,16 +167,20 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		3CD4C037C81427C6F637A134 /* [CP] Check Pods Manifest.lock */ = {
+		599820290407DE327C874597 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			inputFileListPaths = (
 			);
 			inputPaths = (
 				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
 				"${PODS_ROOT}/Manifest.lock",
 			);
 			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
 			outputPaths = (
 				"$(DERIVED_FILE_DIR)/Pods-StripePayment-checkManifestLockResult.txt",
 			);
@@ -184,22 +189,21 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		92EC3F537B1A999CCCE873BF /* [CP] Embed Pods Frameworks */ = {
+		F41053B7083703CCD1999650 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputPaths = (
-				"${SRCROOT}/Pods/Target Support Files/Pods-StripePayment/Pods-StripePayment-frameworks.sh",
-				"${BUILT_PRODUCTS_DIR}/Stripe/Stripe.framework",
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StripePayment/Pods-StripePayment-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
 			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Stripe.framework",
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-StripePayment/Pods-StripePayment-frameworks-${CONFIGURATION}-output-files.xcfilelist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-StripePayment/Pods-StripePayment-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-StripePayment/Pods-StripePayment-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -265,6 +269,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -290,7 +295,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 11.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -325,6 +330,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -344,7 +350,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 11.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -355,7 +361,7 @@
 		};
 		69D8C17220D5253D00BB8170 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = FDB752E3CAF5DFF71259803F /* Pods-StripePayment.debug.xcconfig */;
+			baseConfigurationReference = AF8BAC359526F92867513DC0 /* Pods-StripePayment.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
@@ -364,16 +370,17 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hs.stripePayment;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
 		69D8C17320D5253D00BB8170 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = B3F88C535D9B73DFE865EEED /* Pods-StripePayment.release.xcconfig */;
+			baseConfigurationReference = 21C81F5F5017B65E6914B029 /* Pods-StripePayment.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
@@ -382,9 +389,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hs.stripePayment;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

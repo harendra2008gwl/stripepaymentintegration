@@ -58,9 +58,12 @@
         self.cancelItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
                                                                         target:self
                                                                         action:@selector(handleCancelTapped:)];
+        self.cancelItem.accessibilityIdentifier = @"CoreViewControllerCancelIdentifier";
 
         self.stp_navigationItemProxy.leftBarButtonItem = self.cancelItem;
     }
+
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAppearance) name:UIContentSizeCategoryDidChangeNotification object:nil];
 }
 
 - (void)setTheme:(STPTheme *)theme {
@@ -74,8 +77,6 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-
-    self.automaticallyAdjustsScrollViewInsets = YES;
 
     [self createAndSetupViews];
     [self updateAppearance];

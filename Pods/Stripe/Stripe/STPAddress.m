@@ -14,6 +14,8 @@
 #import "STPCardValidator.h"
 #import "STPEmailAddressValidator.h"
 #import "STPFormEncoder.h"
+#import "STPPaymentMethodAddress.h"
+#import "STPPaymentMethodBillingDetails.h"
 #import "STPPhoneNumberValidator.h"
 #import "STPPostalCodeValidator.h"
 
@@ -56,6 +58,23 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
     }
 
     return stringIfHasContentsElseNil(phone);
+}
+
+- (instancetype)initWithPaymentMethodBillingDetails:(STPPaymentMethodBillingDetails *)billingDetails {
+    self = [super init];
+    if (self) {
+        _name = [billingDetails.name copy];
+        _phone = [billingDetails.phone copy];
+        _email = [billingDetails.email copy];
+        STPPaymentMethodAddress *pmAddress = billingDetails.address;
+        _line1 = [pmAddress.line1 copy];
+        _line2 = [pmAddress.line2 copy];
+        _city = [pmAddress.city copy];
+        _state = [pmAddress.state copy];
+        _postalCode = [pmAddress.postalCode copy];
+        _country = [pmAddress.country copy];
+    }
+    return self;
 }
 
 - (instancetype)initWithCNContact:(CNContact *)contact {
@@ -125,8 +144,7 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
 - (NSString *)firstName {
     if (self.givenName) {
         return self.givenName;
-    }
-    else {
+    } else {
         NSArray<NSString *>*components = [self.name componentsSeparatedByString:@" "];
         return [components firstObject];
     }
@@ -135,8 +153,7 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
 - (NSString *)lastName {
     if (self.familyName) {
         return self.familyName;
-    }
-    else {
+    } else {
         NSArray<NSString *>*components = [self.name componentsSeparatedByString:@" "];
         NSString *firstName = [components firstObject];
         NSString *lastName = [self.name stringByReplacingOccurrencesOfString:firstName withString:@""];
@@ -164,11 +181,13 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
     switch (requiredFields) {
         case STPBillingAddressFieldsNone:
             return YES;
-        case STPBillingAddressFieldsZip:
+        case STPBillingAddressFieldsPostalCode:
             return ([STPPostalCodeValidator validationStateForPostalCode:self.postalCode
                                                              countryCode:self.country] == STPCardValidationStateValid);
         case STPBillingAddressFieldsFull:
             return [self hasValidPostalAddress];
+        case STPBillingAddressFieldsName:
+            return self.name.length > 0;
     }
     return containsFields;
 }
@@ -177,10 +196,12 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
     switch (desiredFields) {
         case STPBillingAddressFieldsNone:
             return NO;
-        case STPBillingAddressFieldsZip:
+        case STPBillingAddressFieldsPostalCode:
             return self.postalCode.length > 0;
         case STPBillingAddressFieldsFull:
             return [self hasPartialPostalAddress];
+        case STPBillingAddressFieldsName:
+            return self.name.length > 0;
     }
 
     return NO;
@@ -235,36 +256,19 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
             || self.postalCode.length > 0);
 }
 
-+ (PKAddressField)applePayAddressFieldsFromBillingAddressFields:(STPBillingAddressFields)billingAddressFields {
++ (NSSet<PKContactField> *)applePayContactFieldsFromBillingAddressFields:(STPBillingAddressFields)billingAddressFields {
     switch (billingAddressFields) {
         case STPBillingAddressFieldsNone:
-            return PKAddressFieldNone;
-        case STPBillingAddressFieldsZip:
+            return [NSSet setWithArray:@[]];
+        case STPBillingAddressFieldsPostalCode:
         case STPBillingAddressFieldsFull:
-            return PKAddressFieldPostalAddress;
+            return [NSSet setWithArray:@[PKContactFieldName, PKContactFieldPostalAddress]];
+        case STPBillingAddressFieldsName:
+            return [NSSet setWithArray:@[PKContactFieldName]];
     }
 }
 
-+ (PKAddressField)pkAddressFieldsFromStripeContactFields:(NSSet<STPContactField> *)contactFields {
-    PKAddressField addressFields = PKAddressFieldNone;
-    NSDictionary<STPContactField, NSNumber *> *contactToAddressFieldMap
-    = @{
-        STPContactFieldPostalAddress: @(PKAddressFieldPostalAddress),
-        STPContactFieldEmailAddress: @(PKAddressFieldEmail),
-        STPContactFieldPhoneNumber: @(PKAddressFieldPhone),
-        STPContactFieldName: @(PKAddressFieldName),
-        };
-
-    for (STPContactField contactField in contactFields) {
-        NSNumber *boxedConvertedField = contactToAddressFieldMap[contactField];
-        if (boxedConvertedField != nil) {
-            addressFields = (PKAddressField) (addressFields | [boxedConvertedField unsignedIntegerValue]);
-        }
-    }
-    return addressFields;
-}
-
-+ (NSSet<PKContactField> *)pkContactFieldsFromStripeContactFields:(NSSet<STPContactField> *)contactFields API_AVAILABLE(ios(11.0)) {
++ (NSSet<PKContactField> *)pkContactFieldsFromStripeContactFields:(NSSet<STPContactField> *)contactFields {
     if (contactFields == nil) {
         return nil;
     }
@@ -326,6 +330,32 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
              };
 }
 
+#pragma mark NSCopying
+
+- (id)copyWithZone:(__unused NSZone *)zone {
+    STPAddress *copyAddress = [self.class new];
+
+    // Name might be stored as full name in _name, or split between given/family name
+    // access ivars directly and explicitly copy the instances.
+    copyAddress->_name = [self->_name copy];
+    copyAddress->_givenName = [self->_givenName copy];
+    copyAddress->_familyName = [self->_familyName copy];
+
+    copyAddress.line1 = self.line1;
+    copyAddress.line2 = self.line2;
+    copyAddress.city = self.city;
+    copyAddress.state = self.state;
+    copyAddress.postalCode = self.postalCode;
+    copyAddress.country = self.country;
+
+    copyAddress.phone = self.phone;
+    copyAddress.email = self.email;
+
+    copyAddress.allResponseFields = self.allResponseFields;
+
+    return copyAddress;
+}
+
 @end
 
 #pragma mark -
@@ -333,8 +363,7 @@ STPContactField const STPContactFieldName = @"STPContactFieldName";
 NSString *stringIfHasContentsElseNil(NSString *string) {
     if (string.length > 0) {
         return string;
-    }
-    else {
+    } else {
         return nil;
     }
 }

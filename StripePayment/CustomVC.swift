@@ -47,7 +47,7 @@ class CustomVC: UIViewController {
             
             
             if error != nil {
-                print(error?.localizedDescription)
+                print(error?.localizedDescription ?? "")
             }
             
             if token != nil{

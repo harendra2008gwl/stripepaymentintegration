@@ -13,6 +13,7 @@
 #import "STPCardParams.h"
 #import "STPFormEncoder.h"
 #import "STPSource+Private.h"
+#import "STPKlarnaLineItem.h"
 
 @interface STPSourceParams ()
 
@@ -152,7 +153,7 @@
 }
 
 + (STPSourceParams *)idealParamsWithAmount:(NSUInteger)amount
-                                      name:(NSString *)name
+                                      name:(nullable NSString *)name
                                  returnURL:(NSString *)returnURL
                        statementDescriptor:(nullable NSString *)statementDescriptor
                                       bank:(nullable NSString *)bank {
@@ -160,12 +161,14 @@
     params.type = STPSourceTypeIDEAL;
     params.amount = @(amount);
     params.currency = @"eur"; // iDEAL must always use eur
-    params.owner = @{ @"name": name };
+    if (name.length > 0) {
+        params.owner = @{ @"name": name };
+    }
     params.redirect = @{ @"return_url": returnURL };
-    if (statementDescriptor != nil || bank != nil) {
+    if (statementDescriptor.length > 0 || bank.length > 0) {
         NSMutableDictionary *idealDict = [NSMutableDictionary dictionary];
-        idealDict[@"statement_descriptor"] = statementDescriptor;
-        idealDict[@"bank"] = bank;
+        idealDict[@"statement_descriptor"] = (statementDescriptor.length > 0) ? statementDescriptor : nil;
+        idealDict[@"bank"] = (bank.length > 0) ? bank : nil;
         params.additionalAPIParameters = @{ @"ideal": idealDict };
     }
     return params;
@@ -221,10 +224,119 @@
     return params;
 }
 
++ (STPSourceParams *)klarnaParamsWithReturnURL:(NSString *)returnURL
+                                      currency:(NSString *)currency
+                               purchaseCountry:(NSString *)purchaseCountry
+                                         items:(NSArray<STPKlarnaLineItem *> *)items
+                          customPaymentMethods:(STPKlarnaPaymentMethods)customPaymentMethods
+                                billingAddress:(STPAddress *)address
+                              billingFirstName:(NSString *)firstName
+                               billingLastName:(NSString *)lastName
+                                    billingDOB:(STPDateOfBirth *)dateOfBirth {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeKlarna;
+    params.currency = currency;
+    params.redirect = @{ @"return_url": returnURL };
+    NSMutableDictionary *additionalAPIParameters = [NSMutableDictionary dictionary];
+
+    NSMutableDictionary *klarnaDict = [NSMutableDictionary dictionary];
+    klarnaDict[@"product"] = @"payment";
+    klarnaDict[@"purchase_country"] = purchaseCountry;
+        
+    if (address) {
+        if ([address.country isEqualToString:purchaseCountry] &&
+            address.line1 != nil &&
+            address.postalCode != nil &&
+            address.city != nil &&
+            address.email != nil &&
+            firstName != nil &&
+            lastName != nil) {
+            klarnaDict[@"first_name"] = firstName;
+            klarnaDict[@"last_name"] = lastName;
+            
+            NSMutableDictionary *ownerDict = [NSMutableDictionary dictionary];
+            NSMutableDictionary *addressDict = [NSMutableDictionary dictionary];
+
+            addressDict[@"line1"] = address.line1;
+            addressDict[@"line2"] = address.line2;
+            addressDict[@"city"] = address.city;
+            addressDict[@"state"] = address.state;
+            addressDict[@"postal_code"] = address.postalCode;
+            addressDict[@"country"] = address.country;
+
+            ownerDict[@"address"] = addressDict;
+            ownerDict[@"phone"] = address.phone;
+            ownerDict[@"email"] = address.email;
+            additionalAPIParameters[@"owner"] = ownerDict;
+        }
+    }
+    
+    if (dateOfBirth) {
+        klarnaDict[@"owner_dob_day"] = [NSString stringWithFormat:@"%02ld", (long)dateOfBirth.day];
+        klarnaDict[@"owner_dob_month"] = [NSString stringWithFormat:@"%02ld", (long)dateOfBirth.month];
+        klarnaDict[@"owner_dob_year"] = [NSString stringWithFormat:@"%li", (long)dateOfBirth.year];
+    }
+
+    NSUInteger amount = 0;
+    NSMutableArray *sourceOrderItems = [NSMutableArray arrayWithCapacity:[items count]];
+    for (STPKlarnaLineItem *item in items) {
+        NSString *itemType = nil;
+        switch (item.itemType) {
+            case STPKlarnaLineItemTypeSKU:
+                itemType = @"sku";
+                break;
+            case STPKlarnaLineItemTypeTax:
+                itemType = @"tax";
+                break;
+            case STPKlarnaLineItemTypeShipping:
+                itemType = @"shipping";
+                break;
+            default:
+                break;
+        }
+        [sourceOrderItems addObject:@{
+            @"type": itemType,
+            @"description": item.itemDescription,
+            @"quantity": item.quantity,
+            @"amount": item.totalAmount,
+            @"currency": currency
+        }];
+        amount = [item.totalAmount unsignedIntValue] + amount;
+    }
+    params.amount = @(amount);
+    
+    if (customPaymentMethods != STPKlarnaPaymentMethodsNone) {
+        NSMutableArray *customPaymentMethodsArray = [NSMutableArray array];
+        if (customPaymentMethods & STPKlarnaPaymentMethodsPayIn4) {
+            [customPaymentMethodsArray addObject:@"payin4"];
+        }
+        if (customPaymentMethods & STPKlarnaPaymentMethodsInstallments) {
+            [customPaymentMethodsArray addObject:@"installments"];
+        }
+        klarnaDict[@"custom_payment_methods"] = [customPaymentMethodsArray componentsJoinedByString:@","];
+    }
+
+    additionalAPIParameters[@"source_order"] = @{@"items" : sourceOrderItems};
+    additionalAPIParameters[@"klarna"] = klarnaDict;
+    additionalAPIParameters[@"flow"] = @"redirect";
+
+    params.additionalAPIParameters = additionalAPIParameters;
+    return params;
+}
+
++ (STPSourceParams *)klarnaParamsWithReturnURL:(NSString *)returnURL
+            currency:(NSString *)currency
+     purchaseCountry:(NSString *)purchaseCountry
+               items:(NSArray<STPKlarnaLineItem *> *)items
+                          customPaymentMethods:(STPKlarnaPaymentMethods)customPaymentMethods {
+    return [self klarnaParamsWithReturnURL:returnURL currency:currency purchaseCountry:purchaseCountry items:items customPaymentMethods:customPaymentMethods billingAddress:nil billingFirstName:nil billingLastName:nil billingDOB:nil];
+}
+
 + (STPSourceParams *)threeDSecureParamsWithAmount:(NSUInteger)amount
                                          currency:(NSString *)currency
                                         returnURL:(NSString *)returnURL
                                              card:(NSString *)card {
+    NSCAssert(card != nil, @"'card' id is required to create a 3DS params for the card");
     STPSourceParams *params = [self new];
     params.type = STPSourceTypeThreeDSecure;
     params.amount = @(amount);
@@ -309,6 +421,55 @@
                                                 }
 
                                         };
+    return params;
+}
+
++ (STPSourceParams *)epsParamsWithAmount:(NSUInteger)amount
+                                    name:(NSString *)name
+                               returnURL:(NSString *)returnURL
+                     statementDescriptor:(nullable NSString *)statementDescriptor {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeEPS;
+    params.amount = @(amount);
+    params.currency = @"eur"; // EPS must always use eur
+    params.owner = @{ @"name": name };
+    params.redirect = @{ @"return_url": returnURL };
+
+    if (statementDescriptor.length > 0) {
+        params.additionalAPIParameters = @{ @"statement_descriptor": statementDescriptor };
+    }
+
+    return params;
+}
+
++ (STPSourceParams *)multibancoParamsWithAmount:(NSUInteger)amount
+                                      returnURL:(NSString *)returnURL
+                                          email:(NSString *)email {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeMultibanco;
+    params.currency = @"eur"; // Multibanco must always use eur
+    params.amount = @(amount);
+    params.redirect = @{ @"return_url": returnURL };
+    params.owner = @{ @"email": email };
+    return params;
+}
+
++ (STPSourceParams *)wechatPayParamsWithAmount:(NSUInteger)amount
+                                      currency:(NSString *)currency
+                                         appId:(NSString *)appId
+                           statementDescriptor:(nullable NSString *)statementDescriptor {
+    STPSourceParams *params = [self new];
+
+    params.type = STPSourceTypeWeChatPay;
+    params.amount = @(amount);
+    params.currency = currency;
+
+    NSMutableDictionary *wechat = [NSMutableDictionary new];
+    wechat[@"appid"] = appId;
+    if (statementDescriptor.length > 0) {
+        wechat[@"statement_descriptor"] = statementDescriptor;
+    }
+    params.additionalAPIParameters = @{ @"wechat": [wechat copy] };
     return params;
 }
 

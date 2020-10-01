@@ -11,6 +11,9 @@
 #import "STPAPIClient.h"
 #import "STPAPIRequest.h"
 
+@class STDSAuthenticationRequestParameters;
+@class STP3DS2AuthenticateResponse;
+@class STPCardBINMetadata;
 @class STPEphemeralKey;
 
 NS_ASSUME_NONNULL_BEGIN
@@ -22,9 +25,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)createTokenWithParameters:(NSDictionary *)parameters
                        completion:(STPTokenCompletionBlock)completion;
 
++ (void)validateKey:(NSString *)publishableKey;
 
 @property (nonatomic, strong, readwrite) NSURL *apiURL;
-@property (nonatomic, strong, readwrite) NSURLSession *urlSession;
+@property (nonatomic, strong, readonly) NSURLSession *urlSession;
+
+/**
+ @note `additionalHeaders` overwrites any headers provided by the api client.
+ */
+- (NSMutableURLRequest *)configuredRequestForURL:(NSURL *)url additionalHeaders:(nullable NSDictionary<NSString *, NSString *> *)headers;
++ (NSURLSessionConfiguration *)sharedUrlSessionConfiguration;
 
 @end
 
@@ -32,7 +42,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSURLSessionDataTask *)retrieveSourceWithId:(NSString *)identifier
                                   clientSecret:(NSString *)secret
-                            responseCompletion:(STPAPIResponseBlock)completion;
+                            responseCompletion:(void (^)(STPSource * _Nullable, NSHTTPURLResponse * _Nullable, NSError * _Nullable))completion;
+
+@end
+
+@interface STPAPIClient (EphemeralKeys)
+
+/**
+ A helper method that returns the Authorization header to use for API requests. If ephemeralKey is nil, uses self.publishableKey instead.
+ */
+- (NSDictionary<NSString *, NSString *> *)authorizationHeaderUsingEphemeralKey:(nullable STPEphemeralKey *)ephemeralKey;
 
 @end
 
@@ -43,7 +62,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @see https://stripe.com/docs/api#retrieve_customer
  */
-+ (void)retrieveCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
+- (void)retrieveCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
                       completion:(STPCustomerCompletionBlock)completion;
 
 /**
@@ -51,7 +70,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @see https://stripe.com/docs/api#create_card
  */
-+ (void)addSource:(NSString *)sourceID
+- (void)addSource:(NSString *)sourceID
 toCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
        completion:(STPSourceProtocolCompletionBlock)completion;
 
@@ -60,7 +79,7 @@ toCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
 
  @see https://stripe.com/docs/api#update_customer
  */
-+ (void)updateCustomerWithParameters:(NSDictionary *)parameters
+- (void)updateCustomerWithParameters:(NSDictionary *)parameters
                             usingKey:(STPEphemeralKey *)ephemeralKey
                           completion:(STPCustomerCompletionBlock)completion;
 
@@ -69,9 +88,130 @@ toCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
 
  @see https://stripe.com/docs/api#delete_card
  */
-+ (void)deleteSource:(NSString *)sourceID
+- (void)deleteSource:(NSString *)sourceID
 fromCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
-          completion:(STPSourceProtocolCompletionBlock)completion;
+          completion:(STPErrorBlock)completion;
+
+/**
+ Attach a Payment Method to a customer
+ 
+ @see https://stripe.com/docs/api/payment_methods/attach
+ */
+- (void)attachPaymentMethod:(NSString *)paymentMethodID
+         toCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
+                 completion:(STPErrorBlock)completion;
+
+/**
+ Detach a Payment Method from a customer
+ 
+ @see https://stripe.com/docs/api/payment_methods/detach
+ */
+- (void)detachPaymentMethod:(NSString *)paymentMethodID
+       fromCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
+                 completion:(STPErrorBlock)completion;
+
+/**
+ Retrieves a list of Payment Methods attached to a customer.
+ 
+ @note This only fetches card type Payment Methods
+ */
+- (void)listPaymentMethodsForCustomerUsingKey:(STPEphemeralKey *)ephemeralKey
+                                   completion:(STPPaymentMethodsCompletionBlock)completion;
+@end
+
+@interface STPAPIClient (ThreeDS2)
+
+/**
+ Kicks off 3DS2 authentication.
+ */
+- (void)authenticate3DS2:(STDSAuthenticationRequestParameters *)authRequestParams
+        sourceIdentifier:(NSString *)sourceID
+               returnURL:(nullable NSString *)returnURLString
+              maxTimeout:(NSInteger)maxTimeout
+              completion:(STP3DS2AuthenticateCompletionBlock)completion;
+
+/**
+ Endpoint to call to indicate that the challenge flow for a 3DS2 authentication has finished.
+ */
+- (void)complete3DS2AuthenticationForSource:(NSString *)sourceID completion:(STPBooleanSuccessBlock)completion;
+
+@end
+
+@interface STPAPIClient (PaymentIntentPrivate)
+
+/**
+ Retrieves the PaymentIntent object using the given secret. @see https://stripe.com/docs/api#retrieve_payment_intent
+
+ @param secret      The client secret of the payment intent to be retrieved. Cannot be nil.
+ @param expand  An array of string keys to expand on the returned PaymentIntent object. These strings should match one or more of the parameter names that are marked as expandable. @see https://stripe.com/docs/api/payment_intents/object
+ @param completion  The callback to run with the returned PaymentIntent object, or an error.
+*/
+- (void)retrievePaymentIntentWithClientSecret:(NSString *)secret
+                                       expand:(nullable NSArray<NSString *> *)expand
+                                   completion:(STPPaymentIntentCompletionBlock)completion;
+
+/**
+ Confirms the PaymentIntent object with the provided params object.
+ 
+ At a minimum, the params object must include the `clientSecret`.
+ 
+ @see https://stripe.com/docs/api#confirm_payment_intent
+ 
+ @note Use the `confirmPayment:withAuthenticationContext:completion:` method on `STPPaymentHandler` instead
+ of calling this method directly. It handles any authentication necessary for you. @see https://stripe.com/docs/mobile/ios/authentication
+ @param paymentIntentParams  The `STPPaymentIntentParams` to pass to `/confirm`
+ @param expand  An array of string keys to expand on the returned PaymentIntent object. These strings should match one or more of the parameter names that are marked as expandable. @see https://stripe.com/docs/api/payment_intents/object
+ @param completion           The callback to run with the returned PaymentIntent object, or an error.
+*/
+- (void)confirmPaymentIntentWithParams:(STPPaymentIntentParams *)paymentIntentParams
+                                expand:(nullable NSArray<NSString *> *)expand
+                            completion:(STPPaymentIntentCompletionBlock)completion;
+
+/**
+ Endpoint to call to indicate that the web-based challenge flow for 3DS authentication was canceled.
+ */
+- (void)cancel3DSAuthenticationForPaymentIntent:(NSString *)paymentIntentID
+                                     withSource:(NSString *)sourceID
+                                     completion:(STPPaymentIntentCompletionBlock)completion;
+
+@end
+
+@interface STPAPIClient (SetupIntentPrivate)
+
+/**
+ Endpoint to call to indicate that the web-based challenge flow for 3DS authentication was canceled.
+ */
+- (void)cancel3DSAuthenticationForSetupIntent:(NSString *)setupIntentID
+                                   withSource:(NSString *)sourceID
+                                   completion:(STPSetupIntentCompletionBlock)completion;
+
+@end
+
+@interface Stripe (Private)
+
++ (NSArray<NSString *> *)supportedPKPaymentNetworks;
+
+@end
+
+@interface STPAPIClient (FPXPrivate)
+
+/**
+ Retrieves the online status of the FPX banks from the Stripe API.
+
+ @param completion  The callback to run with the returned FPX bank list, or an error.
+ */
+- (void)retrieveFPXBankStatusWithCompletion:(STPFPXBankStatusCompletionBlock)completion;
+
+@end
+
+@interface STPAPIClient (CardPrivate)
+
+/**
+ Retrieves possible BIN ranges for the 6 digit BIN prefix.
+ 
+ @param completion The callback to run with the return STPCardBINMetadata, or an error.
+ */
+- (void)retrieveCardBINMetadataForPrefix:(NSString *)binPrefix withCompletion:(void (^)(STPCardBINMetadata * _Nullable, NSError * _Nullable))completion;
 
 @end
 
